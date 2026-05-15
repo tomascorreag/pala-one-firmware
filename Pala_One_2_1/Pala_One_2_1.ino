@@ -229,6 +229,10 @@ struct UploadState {
   String bookFinalName;
   bool bookOk = false;
   String bookError;
+  // Cross-chunk state for streaming compactText() during upload, so
+  // whitespace runs that span chunk boundaries don't produce duplicates.
+  bool bookCompactLastWasSpace = false;
+  int  bookCompactNewlineCount = 0;
 
   String sleepTmpPath;
   bool sleepOk = false;
@@ -395,6 +399,7 @@ static String pageCachePathForBook(const String& path);
 static bool loadPageOffsetCacheForBook(const String& path, size_t expectedSize);
 static void savePageOffsetCacheForBook(const String& path, size_t fileSize);
 static void invalidateAllPageCaches();
+static void relocateOpenBookToOffset(uint32_t targetOffset);
 static uint32_t resolveBookmarkOffset(const String& path, uint16_t page, uint32_t storedOffset);
 static String readPageTextForWeb(const String& path, int page);
 
@@ -505,8 +510,10 @@ static void clearButtonQueue() {
 void IRAM_ATTR btnISR() {
   uint8_t next = (uint8_t)((btnQHead + 1) % BTN_Q);
   if (next == btnQTail) {
-    btnQTail = (uint8_t)((btnQTail + 1) % BTN_Q);
+    // Queue full: drop the NEW event. Advancing btnQTail from the ISR would
+    // race ButtonState::poll() and deliver events out of order.
     g_isrDropCount++;
+    return;
   }
   btnQState[btnQHead] = (digitalRead(BTN) == LOW);
   btnQTimeMs[btnQHead] = isrNowMs();
@@ -953,23 +960,43 @@ static void savePageOffsetCacheForBook(const String& path, size_t fileSize) {
 
 static void invalidateAllPageCaches() {
   // Page offsets are computed from the current font size and line spacing.
-  // When either changes, ALL cached offsets are invalid -- both the in-memory
-  // arrays and the on-disk .bin files. We also reset the saved page index to 0
-  // for every book, because page N at font size 8 is a completely different
-  // byte position at font size 12. Keeping the old page number would cause
-  // the reader to seek to the wrong place and display garbled / missing text.
+  // When either changes, page numbers stored in prefs are stale (page N at
+  // font 8 != page N at font 12), but the BYTE OFFSET of the reader's last
+  // position is layout-independent. We keep that offset (in pref key "_o")
+  // and set a "needs relocation" flag ("_n") so the next open of each book
+  // re-derives its page number from the byte offset in the new layout.
+  // For bookmarks we mirror the same byte-offset-is-truth approach: keep
+  // bmOffsets[] (those still point to the correct text after the layout
+  // change) and let the stored page number become a stale fallback used
+  // only by readBookmarkLabelAtOffset() when seek() fails.
+
+  // Capture the currently open book's byte offset BEFORE we wipe in-memory
+  // pageOffsets[]. saveProgressThrottled keeps "_o" reasonably current, but
+  // the user may have turned pages since the last throttle fire.
+  uint32_t openBookOffset = 0;
+  bool haveOpenBookOffset = false;
+  if (g_reader.currentBookKey.length() > 0
+      && g_reader.pageIndex >= 0
+      && g_reader.pageIndex < g_reader.knownPages) {
+    openBookOffset = g_reader.pageOffsets[g_reader.pageIndex];
+    haveOpenBookOffset = true;
+    prefs.putUInt((g_reader.currentBookKey + "_o").c_str(), openBookOffset);
+  }
 
   resetOffsetCache();
 
-  // Remove all on-disk page-cache files (pc_*.bin)
+  // Remove all on-disk page-cache files (pc_*.bin).
+  // f.name() on arduino-esp32 3.x returns the BASENAME (no leading slash),
+  // so check both forms and rebuild the absolute path before remove().
   File root = FS.open("/");
   if (root && root.isDirectory()) {
     File f = root.openNextFile();
     while (f) {
-      String name = String(f.name());
-      bool removeIt = name.startsWith("/pc_") && name.endsWith(".bin");
+      String n = String(f.name());
+      String absPath = n.startsWith("/") ? n : ("/" + n);
+      bool removeIt = (n.startsWith("pc_") || n.startsWith("/pc_")) && n.endsWith(".bin");
       f.close();
-      if (removeIt) FS.remove(name);
+      if (removeIt) FS.remove(absPath);
       f = root.openNextFile();
     }
     root.close();
@@ -977,35 +1004,38 @@ static void invalidateAllPageCaches() {
     root.close();
   }
 
-  // Reset saved page progress and bookmark offsets for every book.
-  // Both page numbers and byte offsets are font-layout-dependent:
-  // page N and offset O at font 8 point to different text at font 12.
-  // Bookmark page numbers (uint16_t) are kept but offsets are set to
-  // 0xFFFFFFFF so resolveBookmarkOffset() recomputes them on next access.
+  // Mark every book as needing relocation on next open. We keep "_p" as-is
+  // (it's a hint and harmless if "_n" path overrides it) and rely on "_o" +
+  // the new layout to derive the correct page in openBookByIndex.
+  // Bookmarks are intentionally NOT touched: bmOffsets[] are still valid
+  // byte positions in the same file, so navigation lands on the right text.
+  // The stored bmPages[] page numbers are stale but only used by
+  // readBookmarkLabelAtOffset() as a fallback label ("p. N") when seek
+  // fails; in normal use the label is derived from the text at bmOffsets[j].
   for (int i = 0; i < g_library.bookCount; i++) {
     String key = prefKeyForBook(String(g_library.books[i].path));
-    prefs.putInt((key + "_p").c_str(), 0);
-
-    // Invalidate stored bookmark offsets (keep page numbers, clear byte offsets)
-    uint16_t bmPages[MAX_BOOKMARKS];
-    uint32_t bmOffsets[MAX_BOOKMARKS];
-    uint8_t bmCount = loadBookmarksForKey(key, bmPages, bmOffsets);
-    if (bmCount > 0) {
-      for (uint8_t j = 0; j < bmCount; j++) bmOffsets[j] = 0xFFFFFFFFUL;
-      saveBookmarksForKey(key, bmPages, bmOffsets, bmCount);
-    }
+    prefs.putBool((key + "_n").c_str(), true);
   }
 
-  // Reset the currently open book's in-memory state
+  // For the currently open book, reset in-memory pagination and relocate
+  // straight away using the byte offset we just captured. This avoids the
+  // user seeing page 1 momentarily before the next render.
   if (g_reader.currentBookPath.length() > 0) {
-    g_reader.pageIndex   = 0;
-    g_reader.knownPages  = 1;
+    g_reader.knownPages = 1;
     g_reader.pageOffsets[0] = 0;
-    g_reader.eofReached  = false;
+    g_reader.pageIndex = 0;
+    g_reader.eofReached = false;
     resetSaveThrottle();
-    // Persist page 0 so the next cold-open also starts from the beginning
-    if (g_reader.currentBookKey.length() > 0) {
-      prefs.putInt((g_reader.currentBookKey + "_p").c_str(), 0);
+    if (haveOpenBookOffset && g_reader.file) {
+      relocateOpenBookToOffset(openBookOffset);
+      if (g_reader.currentBookKey.length() > 0) {
+        prefs.putInt((g_reader.currentBookKey + "_p").c_str(), g_reader.pageIndex);
+        if (g_reader.pageIndex >= 0 && g_reader.pageIndex < g_reader.knownPages) {
+          prefs.putUInt((g_reader.currentBookKey + "_o").c_str(),
+                        g_reader.pageOffsets[g_reader.pageIndex]);
+        }
+        prefs.remove((g_reader.currentBookKey + "_n").c_str());
+      }
     }
   }
 }
@@ -1054,6 +1084,10 @@ static void saveListItems() {
     strncpy((char*)&buf[pos], g_list.items[i].text, MAX_LIST_TEXT);
     pos += (MAX_LIST_TEXT + 1);
   }
+  // Skip the NVS write if nothing changed, to reduce flash wear.
+  uint8_t existing[1 + MAX_LIST_ITEMS * (1 + MAX_LIST_TEXT + 1)] = {0};
+  size_t got = prefs.getBytes("list_v1", existing, sizeof(existing));
+  if (got == pos && memcmp(existing, buf, pos) == 0) return;
   prefs.putBytes("list_v1", buf, pos);
 }
 
@@ -1440,12 +1474,18 @@ static String normalizeTypography(const String& in) {
 }
 
 // -------- Text compaction (storage optimization) --------
-static String compactText(const String& in) {
+// When called with state pointers, lastWasSpace / newlineCount are carried
+// across calls so streaming uploads collapse whitespace that spans chunk
+// boundaries. Pass trimTail=false on every chunk except the final one.
+static String compactText(const String& in,
+                          bool* ioLastWasSpace = nullptr,
+                          int* ioNewlineCount = nullptr,
+                          bool trimTail = true) {
   String out;
   out.reserve(in.length());
 
-  bool lastWasSpace = false;
-  int newlineCount = 0;
+  bool lastWasSpace = ioLastWasSpace ? *ioLastWasSpace : false;
+  int newlineCount = ioNewlineCount ? *ioNewlineCount : 0;
 
   for (size_t i = 0; i < in.length(); i++) {
     char c = in[i];
@@ -1477,9 +1517,14 @@ static String compactText(const String& in) {
     out += c;
   }
 
-  while (out.length() > 0 &&
-         (out[out.length() - 1] == ' ' || out[out.length() - 1] == '\n')) {
-    out.remove(out.length() - 1);
+  if (ioLastWasSpace) *ioLastWasSpace = lastWasSpace;
+  if (ioNewlineCount) *ioNewlineCount = newlineCount;
+
+  if (trimTail) {
+    while (out.length() > 0 &&
+           (out[out.length() - 1] == ' ' || out[out.length() - 1] == '\n')) {
+      out.remove(out.length() - 1);
+    }
   }
 
   return out;
@@ -1563,6 +1608,12 @@ static void saveProgressThrottled(bool force = false) {
   }
 
   prefs.putInt((g_reader.currentBookKey + "_p").c_str(), g_reader.pageIndex);
+  // Persist the byte offset of the current page so font / line-gap changes can
+  // re-locate the reader at the same text position in the new layout.
+  if (g_reader.pageIndex >= 0 && g_reader.pageIndex < g_reader.knownPages) {
+    prefs.putUInt((g_reader.currentBookKey + "_o").c_str(),
+                  g_reader.pageOffsets[g_reader.pageIndex]);
+  }
   g_reader.lastSaveMs = millis();
   g_reader.lastSavedPage = g_reader.pageIndex;
 }
@@ -1947,6 +1998,14 @@ static uint32_t readPageFromFile(File& f, uint32_t startPos, bool draw, String* 
     if (off <= startPos) off = startPos + 1;
     size_t sz = f.size();
     if (sz > 0 && off > sz) off = sz;
+    // Advance past UTF-8 continuation bytes (0b10xxxxxx) so the next page
+    // doesn't start mid-character. UTF-8 chars are at most 4 bytes.
+    for (int k = 0; k < 3 && off < sz; k++) {
+      if (!f.seek(off)) break;
+      int b = f.peek();
+      if (b < 0 || (b & 0xC0) != 0x80) break;
+      off++;
+    }
     return off;
   };
 
@@ -2123,6 +2182,31 @@ static void ensureOffsetsUpTo(int targetPage) {
   }
 }
 
+// Locate the page containing `targetOffset` in the current font layout, then
+// position pageIndex one page earlier than that containing page (a small
+// re-read so the user never skips past their last position). Walks pages
+// forward via ensureOffsetsUpTo(); falls back to the last known page on
+// EOF / MAX_PAGES cap. Pagination of a multi-MB book can take many seconds,
+// so we yield periodically to keep the task watchdog and HTTP server happy.
+static void relocateOpenBookToOffset(uint32_t targetOffset) {
+  if (targetOffset == 0) {
+    g_reader.pageIndex = 0;
+    return;
+  }
+
+  for (int k = 1; k < MAX_PAGES; k++) {
+    ensureOffsetsUpTo(k);
+    if ((k & 0x3F) == 0) yield();  // every 64 pages: feed WDT + service HTTP
+    if (g_reader.eofReached && (int)g_reader.knownPages <= k) break;
+    if (g_reader.pageOffsets[k] > targetOffset) {
+      int containing = k - 1;                                  // page that contains targetOffset
+      g_reader.pageIndex = (containing > 0) ? (containing - 1) : 0;  // one earlier, for re-read
+      return;
+    }
+  }
+  g_reader.pageIndex = (g_reader.knownPages > 0) ? (int)g_reader.knownPages - 1 : 0;
+}
+
 // ============================================================================
 //  Reader open / render
 // ============================================================================
@@ -2144,8 +2228,22 @@ static bool openBookByIndex(int idx) {
   g_reader.pageOffsets[0] = 0;
   g_reader.eofReached = false;
   loadPageOffsetCacheForBook(path, g_reader.file.size());
-  g_reader.pageIndex = prefs.getInt((g_reader.currentBookKey + "_p").c_str(), 0);
-  if (g_reader.pageIndex < 0) g_reader.pageIndex = 0;
+  // If the layout changed since this book was last open ("_n" set by
+  // invalidateAllPageCaches), re-derive the page from the saved byte offset
+  // instead of trusting the now-stale "_p" page number.
+  if (prefs.getBool((g_reader.currentBookKey + "_n").c_str(), false)) {
+    uint32_t target = prefs.getUInt((g_reader.currentBookKey + "_o").c_str(), 0);
+    relocateOpenBookToOffset(target);
+    prefs.remove((g_reader.currentBookKey + "_n").c_str());
+    prefs.putInt((g_reader.currentBookKey + "_p").c_str(), g_reader.pageIndex);
+    if (g_reader.pageIndex >= 0 && g_reader.pageIndex < g_reader.knownPages) {
+      prefs.putUInt((g_reader.currentBookKey + "_o").c_str(),
+                    g_reader.pageOffsets[g_reader.pageIndex]);
+    }
+  } else {
+    g_reader.pageIndex = prefs.getInt((g_reader.currentBookKey + "_p").c_str(), 0);
+    if (g_reader.pageIndex < 0) g_reader.pageIndex = 0;
+  }
   g_reader.pageTurnsSinceFull = 0;
   resetSaveThrottle();
   syncWakeState(true);
@@ -3947,6 +4045,8 @@ static void handleUploadBookStream() {
     g_upload.bookFinalName = "";
     g_upload.bookPendingUtf8Tail = "";
     g_upload.bookTmpPath = "";
+    g_upload.bookCompactLastWasSpace = false;
+    g_upload.bookCompactNewlineCount = 0;
 
     loadBooks();
     if (g_library.bookCount >= MAX_BOOKS) {
@@ -3985,8 +4085,21 @@ static void handleUploadBookStream() {
       }
       if (chunk.length() > 0) {
         String cleaned = normalizeTypography(chunk);
-        cleaned = compactText(cleaned);
-        g_upload.bookTmpFile.print(cleaned);
+        cleaned = compactText(cleaned,
+                              &g_upload.bookCompactLastWasSpace,
+                              &g_upload.bookCompactNewlineCount,
+                              false);
+        size_t cleanedLen = cleaned.length();
+        size_t wrote = g_upload.bookTmpFile.print(cleaned);
+        if (wrote != cleanedLen) {
+          // Short write — out of space or FS error. Abort the upload so a
+          // truncated file isn't promoted to a finalized book.
+          g_upload.bookError = "Write failed (out of space?)";
+          g_upload.bookTmpFile.close();
+          if (g_upload.bookTmpPath.length() > 0 && FS.exists(g_upload.bookTmpPath)) {
+            FS.remove(g_upload.bookTmpPath);
+          }
+        }
       }
     }
   }
@@ -3995,13 +4108,24 @@ static void handleUploadBookStream() {
     if (g_upload.bookTmpFile) {
       if (g_upload.bookPendingUtf8Tail.length() > 0) {
         String cleaned = normalizeTypography(g_upload.bookPendingUtf8Tail);
-        cleaned = compactText(cleaned);
-        g_upload.bookTmpFile.print(cleaned);
+        cleaned = compactText(cleaned,
+                              &g_upload.bookCompactLastWasSpace,
+                              &g_upload.bookCompactNewlineCount,
+                              true);
+        size_t cleanedLen = cleaned.length();
+        size_t wrote = g_upload.bookTmpFile.print(cleaned);
+        if (wrote != cleanedLen && g_upload.bookError.length() == 0) {
+          g_upload.bookError = "Write failed (out of space?)";
+        }
         g_upload.bookPendingUtf8Tail = "";
       }
       g_upload.bookTmpFile.close();
 
-      if (g_upload.bookTmpPath.length() > 0 && up.totalSize > 0) {
+      if (g_upload.bookError.length() > 0) {
+        if (g_upload.bookTmpPath.length() > 0 && FS.exists(g_upload.bookTmpPath)) {
+          FS.remove(g_upload.bookTmpPath);
+        }
+      } else if (g_upload.bookTmpPath.length() > 0 && up.totalSize > 0) {
         String finalPath = g_upload.bookTmpPath.substring(0, g_upload.bookTmpPath.length() - 4);
         if (FS.exists(finalPath)) FS.remove(finalPath);
         if (FS.rename(g_upload.bookTmpPath, finalPath)) {
