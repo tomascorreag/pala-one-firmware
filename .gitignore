@@ -1,3 +1,10 @@
 CLAUDE.md
 TODO.md
 Pala_One_2_1/build/
+
+# App build artifacts — apps are built locally with the xtensa toolchain
+# (see examples/*/Makefile) and the binaries should not be committed.
+examples/*/*.bin
+examples/*/*.elf
+examples/*/*.map
+examples/*/*.o

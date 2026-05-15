@@ -18,6 +18,10 @@ void app_main(const PalaAPI* api) {
     char buf[16];
     uint32_t pressStart = 0;
 
+    // Drain any press still queued from the launcher gesture so the first
+    // poll doesn't increment the counter to 1 on entry.
+    (void)api->pendingPresses();
+
     api->clearScreen();
     api->drawHeader("Click Counter");
     api->snprintf_wrap(buf, sizeof(buf), "%d", count);

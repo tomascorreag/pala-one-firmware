@@ -176,6 +176,11 @@ void app_main(const PalaAPI* api) {
         }
     }
 
+    // Drain any event still queued from the launcher gesture so the first
+    // pollEvent() doesn't fire a phantom feed/play/clean on entry.
+    while (api->pollEvent() != 0) { }
+    (void)api->pendingPresses();
+
     uint32_t lastHungerDecay = api->millisNow();
     uint32_t lastHappyDecay  = lastHungerDecay;
     uint32_t lastCleanDecay  = lastHungerDecay;
