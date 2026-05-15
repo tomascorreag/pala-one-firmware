@@ -1,0 +1,25 @@
+# Local Claude Code state — do not commit
+CLAUDE.md
+.claude/
+.claude.json
+.mcp.json
+
+# Local git hooks (wired up via `git config core.hooksPath .githooks`)
+.githooks/
+
+# Arduino build artifacts
+/build/
+*.hex
+*.bin
+*.elf
+*.map
+
+# Secrets / credentials — defense in depth, none should ever be tracked
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+credentials.*
+secrets.*
