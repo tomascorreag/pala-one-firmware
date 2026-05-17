@@ -78,6 +78,14 @@ void enter() {
   esp_wifi_stop();
   btStop();
 
+  // ext0(BTN, 0) is level-triggered: a held button satisfies the wake
+  // condition immediately. Wait for release (cap 3 s).
+  {
+    uint32_t t0 = millis();
+    while (digitalRead(BTN) == LOW && (millis() - t0) < 3000UL) delay(10);
+    delay(30);  // settle
+  }
+
   Platform::prepareToSleep();
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   // INPUT_PULLUP is in the digital IO domain, which powers down in deep sleep.
