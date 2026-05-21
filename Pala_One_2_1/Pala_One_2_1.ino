@@ -79,7 +79,6 @@
 #include "src/ui/reader.h"
 #include "src/ui/screen.h"
 #include "src/ui/widgets.h"  // drawCenter
-#include "src/ui/screens/about_screen.h"
 #include "src/ui/screens/apps_screen.h"
 #include "src/ui/screens/bookmarks/book_select_screen.h"
 #include "src/ui/screens/bookmarks/bookmark_list_screen.h"
@@ -99,7 +98,6 @@
 LibraryScreen              g_libraryScreen;
 ReaderScreen               g_readerScreen;
 UploadScreen               g_uploadScreen;
-AboutScreen                g_aboutScreen;
 AppsScreen                 g_appsScreen;
 ListScreen                 g_listScreen;
 BookmarkBookSelectScreen   g_bmBookSelectScreen;

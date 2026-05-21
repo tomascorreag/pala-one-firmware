@@ -13,16 +13,6 @@
 #define D_BOOT_TRY_FACTORY_RESET    "Try factory reset"
 
 // ----------------------------------------------------------------------------
-//  About screen (src/ui/screens/about_screen.cpp)
-// ----------------------------------------------------------------------------
-#define D_ABOUT_HEADER              "Device"
-#define D_ABOUT_FIRMWARE_PREFIX     "Firmware "
-#define D_ABOUT_GESTURE_NEXT        "1x next / down"
-#define D_ABOUT_GESTURE_OPEN        "2x open / select"
-#define D_ABOUT_GESTURE_HOME        "3x home"
-#define D_ABOUT_GESTURE_BOOKMARK    "Hold bookmark"
-
-// ----------------------------------------------------------------------------
 //  Library screen — section title + system menu entries
 //  (src/ui/screens/library_screen.cpp). The "+ " / "- " expansion indicators
 //  in entryLabel() are visual symbols and intentionally NOT translated.
@@ -30,7 +20,6 @@
 #define D_MENU_BOOKMARKS            "Bookmarks"
 #define D_MENU_LIST                 "List"
 #define D_MENU_APPS                 "Apps"
-#define D_MENU_DEVICE               "Device"
 #define D_MENU_UPLOAD               "Upload"
 #define D_LIBRARY_OPEN_FAILED       "Open failed"
 #define D_LIBRARY_TRY_UPLOAD        "Try upload again"

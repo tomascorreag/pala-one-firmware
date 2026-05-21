@@ -18,22 +18,11 @@
 #define D_BOOT_TRY_FACTORY_RESET    "Pruebe reinicio de fábrica"
 
 // ----------------------------------------------------------------------------
-//  About screen
-// ----------------------------------------------------------------------------
-#define D_ABOUT_HEADER              "Dispositivo"
-#define D_ABOUT_FIRMWARE_PREFIX     "Firmware "
-#define D_ABOUT_GESTURE_NEXT        "1x siguiente / abajo"
-#define D_ABOUT_GESTURE_OPEN        "2x abrir / elegir"
-#define D_ABOUT_GESTURE_HOME        "3x inicio"
-#define D_ABOUT_GESTURE_BOOKMARK    "Mantener: marcapáginas"
-
-// ----------------------------------------------------------------------------
 //  Library menu entries
 // ----------------------------------------------------------------------------
 #define D_MENU_BOOKMARKS            "Marcapáginas"
 #define D_MENU_LIST                 "Lista"
 #define D_MENU_APPS                 "Apps"
-#define D_MENU_DEVICE               "Dispositivo"
 #define D_MENU_UPLOAD               "Conectar"
 #define D_LIBRARY_OPEN_FAILED       "Error al abrir"
 #define D_LIBRARY_TRY_UPLOAD        "Intente subir de nuevo"

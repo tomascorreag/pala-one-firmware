@@ -46,16 +46,27 @@ void drawCenter(const char* a, const char* b) {
 }
 
 int drawSectionHeader(const char* title) {
+#if HAS_BATTERY
+  drawBatteryTopRight();
+#endif
+
+  // Headerless variant: skip the title text but keep the underline so the
+  // top edge still reads as a header band. Line sits just below the battery
+  // icon (drawn at y=2, height 9). Used by LibraryScreen, which is hidden
+  // behind a personal-branch tweak that drops the "Pala One" title.
+  if (!title || !*title) {
+    const int lineY = UI_HEADER_TOP + 8;  // 14 — 3px below battery bottom
+    gfx.drawFastHLine(MARGIN_X, lineY, SCREEN_W - (MARGIN_X * 2), 1);
+    Font::useBody();
+    return lineY + UI_HEADER_GAP + 11;
+  }
+
   Font::useBold();
   int ascent = u8g2.getFontAscent();
   int yTitle = UI_HEADER_TOP + ascent - 2;
 
   u8g2.setCursor(MARGIN_X, yTitle);
   u8g2.print(title);
-
-#if HAS_BATTERY
-  drawBatteryTopRight();
-#endif
 
   int lineY = yTitle + 4;
   gfx.drawFastHLine(MARGIN_X, lineY, SCREEN_W - (MARGIN_X * 2), 1);

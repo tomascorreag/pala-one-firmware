@@ -3,11 +3,11 @@
 #include "src/hal/display.h"
 #include "src/pure/library_nav.h"         // buildLibraryEntries
 #include "src/pure/paths.h"               // folderLeafLabel, bookLeafLabel
+#include "src/storage/app_catalog.h"      // g_apps
 #include "src/storage/library.h"
 #include "src/storage/list_items.h"       // listHasVisibleItems
 #include "src/ui/font.h"
 #include "src/ui/reader.h"
-#include "src/ui/screens/about_screen.h"
 #include "src/ui/screens/apps_screen.h"
 #include "src/ui/screens/bookmarks/book_select_screen.h"
 #include "src/ui/screens/bookmarks/session.h"
@@ -26,7 +26,7 @@
 
 // LibraryScreen-specific row indenting. Other menu screens pass nothing
 // extra to drawMenuRow; the library is the only one with folder nesting
-// and a distinguishing nudge for "system" entries (Bookmarks/List/Device/
+// and a distinguishing nudge for "system" entries (Bookmarks/List/Apps/
 // Upload).
 static const int LIBRARY_DEPTH_INDENT = 10;
 static const int LIBRARY_SYSTEM_NUDGE = 2;
@@ -104,7 +104,7 @@ static void toggleExpanded(const char* name) {
 static bool isSystemEntryType(LibraryEntryType t) {
   return t == LIB_ENTRY_BOOKMARKS || t == LIB_ENTRY_LIST
       || t == LIB_ENTRY_APPS
-      || t == LIB_ENTRY_ABOUT || t == LIB_ENTRY_UPLOAD;
+      || t == LIB_ENTRY_UPLOAD;
 }
 
 static int rowIndent(const LibEntry& e) {
@@ -123,7 +123,6 @@ static String entryLabel(const LibEntry& e) {
     case LIB_ENTRY_BOOKMARKS: return D_MENU_BOOKMARKS;
     case LIB_ENTRY_LIST:      return D_MENU_LIST;
     case LIB_ENTRY_APPS:      return D_MENU_APPS;
-    case LIB_ENTRY_ABOUT:     return D_MENU_DEVICE;
     case LIB_ENTRY_UPLOAD:    return D_MENU_UPLOAD;
   }
   return "";
@@ -152,13 +151,13 @@ void LibraryScreen::draw() {
   Font::useBody();
 
   // Decide which system entries to show. "List" only appears when the
-  // todo list has visible items; the rest are always present.
-  LibraryEntryType systemEntries[5];
+  // todo list has visible items; "Apps" only when at least one app is
+  // installed under /apps/. Bookmarks and Upload are always present.
+  LibraryEntryType systemEntries[4];
   int systemCount = 0;
   systemEntries[systemCount++] = LIB_ENTRY_BOOKMARKS;
   if (listHasVisibleItems()) systemEntries[systemCount++] = LIB_ENTRY_LIST;
-  systemEntries[systemCount++] = LIB_ENTRY_APPS;
-  systemEntries[systemCount++] = LIB_ENTRY_ABOUT;
+  if (g_apps.count > 0)      systemEntries[systemCount++] = LIB_ENTRY_APPS;
   systemEntries[systemCount++] = LIB_ENTRY_UPLOAD;
 
   // Build the bool[] view that the assembler wants from our name-keyed
@@ -175,7 +174,7 @@ void LibraryScreen::draw() {
   if (s_cursor < 0) s_cursor = 0;
   if (s_cursor >= s_entryCount) s_cursor = max(0, s_entryCount - 1);
 
-  int y = drawSectionHeader(LIB_HEADER_TITLE);
+  int y = drawSectionHeader(nullptr);
 
   drawScrollableList(y, s_entryCount, s_cursor,
     [&](int idx, int rowY, bool selected, int /*budget*/) {
@@ -235,11 +234,6 @@ void LibraryScreen::onButton(const ButtonEvent& e) {
 
   if (sel.type == LIB_ENTRY_APPS) {
     nextScreen = &g_appsScreen;
-    return;
-  }
-
-  if (sel.type == LIB_ENTRY_ABOUT) {
-    nextScreen = &g_aboutScreen;
     return;
   }
 

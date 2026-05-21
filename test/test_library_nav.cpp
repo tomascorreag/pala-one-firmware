@@ -27,7 +27,7 @@ void addBook(Catalog& cat, const char* name, const char* path, const char* folde
 TEST_CASE("buildLibraryEntries: empty catalog yields only system entries") {
   Catalog cat;
   bool expanded[MAX_FOLDERS] = {false};
-  LibraryEntryType sys[] = { LIB_ENTRY_BOOKMARKS, LIB_ENTRY_ABOUT };
+  LibraryEntryType sys[] = { LIB_ENTRY_BOOKMARKS, LIB_ENTRY_APPS };
   LibEntry out[MAX_LIBRARY_ENTRIES];
 
   int n = buildLibraryEntries(cat, expanded, sys, 2, out, MAX_LIBRARY_ENTRIES);
@@ -35,7 +35,7 @@ TEST_CASE("buildLibraryEntries: empty catalog yields only system entries") {
   CHECK(out[0].type == LIB_ENTRY_BOOKMARKS);
   CHECK(out[0].depth == 0);
   CHECK(out[0].ref == -1);
-  CHECK(out[1].type == LIB_ENTRY_ABOUT);
+  CHECK(out[1].type == LIB_ENTRY_APPS);
 }
 
 TEST_CASE("buildLibraryEntries: root books appear after folder tree") {
@@ -122,7 +122,7 @@ TEST_CASE("buildLibraryEntries: system entries appended in given order") {
   Catalog cat;
   bool expanded[MAX_FOLDERS] = {false};
   LibraryEntryType sys[] = {
-    LIB_ENTRY_BOOKMARKS, LIB_ENTRY_LIST, LIB_ENTRY_ABOUT, LIB_ENTRY_UPLOAD
+    LIB_ENTRY_BOOKMARKS, LIB_ENTRY_LIST, LIB_ENTRY_APPS, LIB_ENTRY_UPLOAD
   };
   LibEntry out[MAX_LIBRARY_ENTRIES];
   int n = buildLibraryEntries(cat, expanded, sys, 4, out, MAX_LIBRARY_ENTRIES);
@@ -130,7 +130,7 @@ TEST_CASE("buildLibraryEntries: system entries appended in given order") {
   REQUIRE(n == 4);
   CHECK(out[0].type == LIB_ENTRY_BOOKMARKS);
   CHECK(out[1].type == LIB_ENTRY_LIST);
-  CHECK(out[2].type == LIB_ENTRY_ABOUT);
+  CHECK(out[2].type == LIB_ENTRY_APPS);
   CHECK(out[3].type == LIB_ENTRY_UPLOAD);
   for (int i = 0; i < 4; i++) {
     CHECK(out[i].ref == -1);
@@ -146,7 +146,7 @@ TEST_CASE("buildLibraryEntries: respects outCap, never overflows the buffer") {
     addBook(cat, n, p, "");
   }
   bool expanded[MAX_FOLDERS] = {false};
-  LibraryEntryType sys[] = { LIB_ENTRY_BOOKMARKS, LIB_ENTRY_ABOUT };
+  LibraryEntryType sys[] = { LIB_ENTRY_BOOKMARKS, LIB_ENTRY_APPS };
 
   // Cap at 3 — we'd have 5 books + 2 system = 7 otherwise.
   LibEntry out[3] = {};
