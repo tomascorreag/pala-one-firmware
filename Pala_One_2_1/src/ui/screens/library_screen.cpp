@@ -13,6 +13,7 @@
 #include "src/ui/screens/bookmarks/session.h"
 #include "src/ui/screens/list_screen.h"
 #include "src/ui/screens/reader_screen.h"
+#include "src/ui/screens/statistics_screen.h"
 #include "src/ui/screens/upload_screen.h"
 #include "src/ui/widgets.h"
 
@@ -103,8 +104,8 @@ static void toggleExpanded(const char* name) {
 // ----------------------------------------------------------------------------
 static bool isSystemEntryType(LibraryEntryType t) {
   return t == LIB_ENTRY_BOOKMARKS || t == LIB_ENTRY_LIST
-      || t == LIB_ENTRY_APPS
-      || t == LIB_ENTRY_UPLOAD;
+      || t == LIB_ENTRY_APPS || t == LIB_ENTRY_STATISTICS
+      || t == LIB_ENTRY_ABOUT || t == LIB_ENTRY_UPLOAD;
 }
 
 static int rowIndent(const LibEntry& e) {
@@ -122,8 +123,10 @@ static String entryLabel(const LibEntry& e) {
     case LIB_ENTRY_BOOK:      return bookLeafLabel(String(g_library.books[e.ref].path));
     case LIB_ENTRY_BOOKMARKS: return D_MENU_BOOKMARKS;
     case LIB_ENTRY_LIST:      return D_MENU_LIST;
-    case LIB_ENTRY_APPS:      return D_MENU_APPS;
-    case LIB_ENTRY_UPLOAD:    return D_MENU_UPLOAD;
+    case LIB_ENTRY_APPS:       return D_MENU_APPS;
+    case LIB_ENTRY_STATISTICS: return D_MENU_STATISTICS;
+    case LIB_ENTRY_ABOUT:      return D_MENU_DEVICE;
+    case LIB_ENTRY_UPLOAD:     return D_MENU_UPLOAD;
   }
   return "";
 }
@@ -151,13 +154,14 @@ void LibraryScreen::draw() {
   Font::useBody();
 
   // Decide which system entries to show. "List" only appears when the
-  // todo list has visible items; "Apps" only when at least one app is
-  // installed under /apps/. Bookmarks and Upload are always present.
-  LibraryEntryType systemEntries[4];
+  // todo list has visible items; the rest are always present.
+  LibraryEntryType systemEntries[6];
   int systemCount = 0;
   systemEntries[systemCount++] = LIB_ENTRY_BOOKMARKS;
   if (listHasVisibleItems()) systemEntries[systemCount++] = LIB_ENTRY_LIST;
-  if (g_apps.count > 0)      systemEntries[systemCount++] = LIB_ENTRY_APPS;
+  systemEntries[systemCount++] = LIB_ENTRY_APPS;
+  systemEntries[systemCount++] = LIB_ENTRY_STATISTICS;
+  systemEntries[systemCount++] = LIB_ENTRY_ABOUT;
   systemEntries[systemCount++] = LIB_ENTRY_UPLOAD;
 
   // Build the bool[] view that the assembler wants from our name-keyed
@@ -236,6 +240,17 @@ void LibraryScreen::onButton(const ButtonEvent& e) {
     nextScreen = &g_appsScreen;
     return;
   }
+
+  if (sel.type == LIB_ENTRY_STATISTICS) {
+    nextScreen = &g_statsScreen;
+    return;
+  }
+
+  if (sel.type == LIB_ENTRY_ABOUT) {
+    nextScreen = &g_aboutScreen;
+    return;
+  }
+
 
   if (sel.type == LIB_ENTRY_UPLOAD) {
     nextScreen = &g_uploadScreen;

@@ -1,0 +1,198 @@
+name: Deploy installer page
+
+# Two-channel publishing model:
+#   - push to `dev`  -> publishes under  /dev/    (development installer)
+#   - tag  `v*`      -> publishes under  /stable/ as a labelled release
+#
+# Merges to `main` do NOT auto-publish — tagging is the explicit release
+# event, so /stable/ never carries an arbitrary mid-release snapshot and
+# the install dialog always shows a clean version name (vX.Y.Z).
+#
+# Both channels live side-by-side on the `gh-pages` branch and never
+# overwrite each other: each run deploys only its channel subdirectory
+# (keep_files: true preserves the other channel).
+#
+# A landing index.html is republished at the gh-pages root on every run.
+# It is identical regardless of channel, so the cross-write is safe.
+
+on:
+  push:
+    branches: [dev]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Which channel to publish to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - stable
+
+permissions:
+  contents: write
+
+# Serialise all writes to the gh-pages branch so two runs cannot race
+# the checkout/commit/push cycle. cancel-in-progress is false: each run
+# represents a different commit's artefacts, we want them all published.
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so scripts/build_info.py can derive FW_VERSION
+          # via `git describe --tags`. Shallow (default depth=1) breaks that.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO and esptool
+        run: pip install --upgrade platformio esptool
+
+      - name: Resolve channel and version
+        id: meta
+        run: |
+          set -euo pipefail
+          # Stable comes from tags only (plus the workflow_dispatch override
+          # for republishing without a code change). Everything else is dev.
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CHANNEL="${{ inputs.channel }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            CHANNEL="stable"
+          else
+            CHANNEL="dev"
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          elif [[ "$CHANNEL" == "stable" ]]; then
+            # workflow_dispatch republish without a tag — label by sha.
+            VERSION="manual-${GITHUB_SHA::7}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing channel=$CHANNEL version=$VERSION"
+
+      # Four leaf envs: (V1.1, V1.2) x (English, Spanish-LA). One language
+      # per binary by design — see README "Language".
+      #
+      # Stable channel always builds clean (no git-hash UI). Dev keeps
+      # DEBUG_BUILD=1 from config.h so the hash stays visible.
+      - name: Build firmware (V1.2 EN)
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ steps.meta.outputs.channel == 'stable' && '-DDEBUG_BUILD=0' || '' }}
+        run: pio run -e wireless-paper-v1_2-en
+
+      - name: Build firmware (V1.2 ES)
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ steps.meta.outputs.channel == 'stable' && '-DDEBUG_BUILD=0' || '' }}
+        run: pio run -e wireless-paper-v1_2-es
+
+      - name: Build firmware (V1.1 EN)
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ steps.meta.outputs.channel == 'stable' && '-DDEBUG_BUILD=0' || '' }}
+        run: pio run -e wireless-paper-v1_1-en
+
+      - name: Build firmware (V1.1 ES)
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ steps.meta.outputs.channel == 'stable' && '-DDEBUG_BUILD=0' || '' }}
+        run: pio run -e wireless-paper-v1_1-es
+
+      - name: Assemble site
+        run: |
+          python scripts/assemble_site.py \
+            --channel "${{ steps.meta.outputs.channel }}" \
+            --version "${{ steps.meta.outputs.version }}"
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./site
+          keep_files: true
+          commit_message: "Deploy ${{ steps.meta.outputs.channel }} ${{ steps.meta.outputs.version }}"
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+
+      # Workflow artifact for every run — lets devs grab a specific dev or
+      # manual build's firmware bins from the Actions tab without needing
+      # to clone + build locally. Auto-expires (default 30 days here).
+      - name: Upload firmware bins as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.meta.outputs.version }}
+          path: site/${{ steps.meta.outputs.channel }}/firmware-*.bin
+          retention-days: 30
+
+      # Tag pushes also get a GitHub Release with four self-contained zips
+      # — one per (board x language) variant. Each zip has everything
+      # esptool needs to flash a board from scratch (bootloader +
+      # partitions + boot_app0 + firmware), so users can roll back to an
+      # older release without going through the web installer.
+      - name: Package release zips
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cd site/stable
+          for board in v1_1 v1_2; do
+            for lang in en es; do
+              name="pala-one-${{ steps.meta.outputs.version }}-${board}-${lang}"
+              mkdir -p "../../release/${name}"
+              cp bootloader.bin partitions.bin boot_app0.bin \
+                 "firmware-${board}-${lang}.bin" \
+                 "../../release/${name}/"
+              (cd ../../release && zip -r "${name}.zip" "${name}" >/dev/null && rm -rf "${name}")
+            done
+          done
+          ls -lh ../../release/
+
+      # Two ways a release can come into being:
+      #   1. Someone uses the GitHub UI "Draft a new release" flow — that
+      #      creates the tag AND the release (with hand-written notes).
+      #      The tag push then triggers this workflow, and by the time we
+      #      get here the release already exists.
+      #   2. Someone pushes a bare tag from the CLI — no release exists
+      #      yet, so we create one with auto-generated notes.
+      #
+      # Either way we want the four zips attached. --clobber lets a
+      # workflow re-run overwrite previously uploaded assets cleanly.
+      - name: Create or update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading assets to it"
+            gh release upload "$TAG" --clobber release/*.zip
+          else
+            echo "Creating new release $TAG"
+            gh release create "$TAG" \
+              --generate-notes \
+              --title "$TAG" \
+              release/*.zip
+          fi
