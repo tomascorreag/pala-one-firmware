@@ -160,9 +160,7 @@ void LibraryScreen::draw() {
   int systemCount = 0;
   systemEntries[systemCount++] = LIB_ENTRY_BOOKMARKS;
   if (listHasVisibleItems()) systemEntries[systemCount++] = LIB_ENTRY_LIST;
-  systemEntries[systemCount++] = LIB_ENTRY_APPS;
   systemEntries[systemCount++] = LIB_ENTRY_STATISTICS;
-  systemEntries[systemCount++] = LIB_ENTRY_ABOUT;
   systemEntries[systemCount++] = LIB_ENTRY_UPLOAD;
 
   // Build the bool[] view that the assembler wants from our name-keyed
