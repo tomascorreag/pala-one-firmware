@@ -106,7 +106,7 @@ static void toggleExpanded(const char* name) {
 static bool isSystemEntryType(LibraryEntryType t) {
   return t == LIB_ENTRY_BOOKMARKS || t == LIB_ENTRY_LIST
       || t == LIB_ENTRY_APPS || t == LIB_ENTRY_STATISTICS
-      || t == LIB_ENTRY_ABOUT || t == LIB_ENTRY_UPLOAD;
+      || t == LIB_ENTRY_UPLOAD;
 }
 
 static int rowIndent(const LibEntry& e) {
@@ -126,7 +126,6 @@ static String entryLabel(const LibEntry& e) {
     case LIB_ENTRY_LIST:      return D_MENU_LIST;
     case LIB_ENTRY_APPS:       return D_MENU_APPS;
     case LIB_ENTRY_STATISTICS: return D_MENU_STATISTICS;
-    case LIB_ENTRY_ABOUT:      return D_MENU_DEVICE;
     case LIB_ENTRY_UPLOAD:     return D_MENU_UPLOAD;
   }
   return "";
@@ -244,12 +243,6 @@ void LibraryScreen::onButton(const ButtonEvent& e) {
     nextScreen = &g_statsScreen;
     return;
   }
-
-  if (sel.type == LIB_ENTRY_ABOUT) {
-    nextScreen = &g_aboutScreen;
-    return;
-  }
-
 
   if (sel.type == LIB_ENTRY_UPLOAD) {
     nextScreen = &g_uploadScreen;
