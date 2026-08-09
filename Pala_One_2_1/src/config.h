@@ -94,8 +94,8 @@ static const uint32_t LONG_MS = 850;
 
 // Hold this long (without a preceding click) and the classifier emits
 // VeryLong instead of Long. Long and VeryLong — plus the click-then-hold
-// chord — are independently bindable to reader actions (bookmark / lock /
-// menu / none) via the web settings UI.
+// chord — are independently bindable to reader actions (bookmark / menu /
+// none) via the web settings UI.
 static const uint32_t VERY_LONG_MS = 2000;
 
 static const uint32_t DEBOUNCE_MS = 14;

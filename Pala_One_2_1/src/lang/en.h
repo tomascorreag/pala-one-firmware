@@ -105,12 +105,6 @@
 #define D_TOAST_BOOKMARK_EXISTS     "Bookmark exists"
 #define D_TOAST_BOOKMARK_SAVED      "Bookmark saved"
 
-// ----------------------------------------------------------------------------
-//  Lock / screensaver (src/ui/sleep.cpp, Pala_One_2_1.ino)
-// ----------------------------------------------------------------------------
-#define D_SCREENSAVER_LOCKED        "Locked"
-#define D_TOAST_UNLOCKED            "Unlocked"
-
 // ============================================================================
 //  Web UI (captive portal) — strings embedded in HTML via adjacent-literal
 //  concatenation. All endpoints declare Content-Type: charset=utf-8 already,
@@ -292,10 +286,8 @@
 #define D_WEB_BUTTONS_EXTRA_LONG    "Extra-long press"
 #define D_WEB_BUTTONS_CLICK_HOLD    "Click, then hold"
 #define D_WEB_BUTTONS_SAVE          "Save buttons"
-#define D_WEB_BUTTONS_LOCK_HINT     "If locked, repeat any hold gesture to unlock."
 #define D_WEB_BUTTONS_ACTION_NONE     "None"
 #define D_WEB_BUTTONS_ACTION_BOOKMARK "Bookmark page"
-#define D_WEB_BUTTONS_ACTION_LOCK     "Lock device"
 #define D_WEB_BUTTONS_ACTION_MENU     "Open menu"
 
 // Device personalization card (src/web/settings.cpp).
@@ -472,5 +464,10 @@
 #define D_WEB_SS_DST_SLOT_PREFIX    "Rotation slot "
 #define D_WEB_SS_DST_OVERWRITE      " (overwrite)"
 #define D_WEB_SS_UPLOAD_EDITED      "Upload edited image"
+#define D_WEB_SS_BIN_HEADING        "Upload .bin file"
+#define D_WEB_SS_BIN_INTRO          "Upload a raw 250&times;122 1-bit bitmap (exactly 3904 bytes), such as a .bin downloaded from this page or shared from another device. No conversion is applied."
+#define D_WEB_SS_BIN_FILE_LABEL     "Bitmap file (.bin)"
+#define D_WEB_SS_BIN_PREVIEW        "Preview"
+#define D_WEB_SS_BIN_UPLOAD         "Upload .bin"
 
 #endif  // PALA_LANG_EN_H

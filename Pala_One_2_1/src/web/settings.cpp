@@ -59,7 +59,6 @@ static void appendActionSelect(String& out, const char* nameId, const char* labe
   out += "'>";
   appendActionOption(out, ACTION_NONE,     D_WEB_BUTTONS_ACTION_NONE,     current);
   appendActionOption(out, ACTION_BOOKMARK, D_WEB_BUTTONS_ACTION_BOOKMARK, current);
-  appendActionOption(out, ACTION_LOCK,     D_WEB_BUTTONS_ACTION_LOCK,     current);
   appendActionOption(out, ACTION_MENU,     D_WEB_BUTTONS_ACTION_MENU,     current);
   out += "</select></div>";
 }
@@ -171,7 +170,6 @@ static void handleSettings() {
   appendActionSelect(out, "btnXL", D_WEB_BUTTONS_EXTRA_LONG, (int)Gestures::actionExtraLong());
   appendActionSelect(out, "btnCH", D_WEB_BUTTONS_CLICK_HOLD, (int)Gestures::actionClickHold());
   out += "</div><div class='actions' style='margin-top:24px'><button type='submit'>" D_WEB_BUTTONS_SAVE "</button>";
-  out += "<span class='muted'>" D_WEB_BUTTONS_LOCK_HINT "</span>";
   out += "</div></form></div>";
 
   out +=

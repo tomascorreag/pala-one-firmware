@@ -103,12 +103,6 @@
 #define D_TOAST_BOOKMARK_EXISTS     "Marcapáginas ya existe"
 #define D_TOAST_BOOKMARK_SAVED      "Marcapáginas guardado"
 
-// ----------------------------------------------------------------------------
-//  Lock / screensaver
-// ----------------------------------------------------------------------------
-#define D_SCREENSAVER_LOCKED        "Bloqueado"
-#define D_TOAST_UNLOCKED            "Desbloqueado"
-
 // ============================================================================
 //  Web UI
 // ============================================================================
@@ -286,10 +280,8 @@
 #define D_WEB_BUTTONS_EXTRA_LONG    "Pulsación muy larga"
 #define D_WEB_BUTTONS_CLICK_HOLD    "Clic y mantener"
 #define D_WEB_BUTTONS_SAVE          "Guardar botones"
-#define D_WEB_BUTTONS_LOCK_HINT     "Si está bloqueado, repita cualquier pulsación larga para desbloquear."
 #define D_WEB_BUTTONS_ACTION_NONE     "Ninguna"
 #define D_WEB_BUTTONS_ACTION_BOOKMARK "Marcar página"
-#define D_WEB_BUTTONS_ACTION_LOCK     "Bloquear dispositivo"
 #define D_WEB_BUTTONS_ACTION_MENU     "Abrir menú"
 
 // Device personalization card (src/web/settings.cpp).
@@ -462,5 +454,10 @@
 #define D_WEB_SS_DST_SLOT_PREFIX    "Ranura de rotación "
 #define D_WEB_SS_DST_OVERWRITE      " (sobrescribir)"
 #define D_WEB_SS_UPLOAD_EDITED      "Subir imagen editada"
+#define D_WEB_SS_BIN_HEADING        "Subir archivo .bin"
+#define D_WEB_SS_BIN_INTRO          "Sube un mapa de bits sin procesar de 250&times;122 a 1 bit (exactamente 3904 bytes), como un .bin descargado de esta página o compartido desde otro dispositivo. No se aplica ninguna conversión."
+#define D_WEB_SS_BIN_FILE_LABEL     "Archivo de mapa de bits (.bin)"
+#define D_WEB_SS_BIN_PREVIEW        "Vista previa"
+#define D_WEB_SS_BIN_UPLOAD         "Subir .bin"
 
 #endif  // PALA_LANG_ES_LA_H

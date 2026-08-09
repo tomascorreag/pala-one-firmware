@@ -2,18 +2,16 @@
 
 #include "src/hal/display.h"
 #include "src/hal/input.h"
-#include "src/ui/lock.h"                     // Lock::engage on ACTION_LOCK
 #include "src/ui/reader.h"
 #include "src/ui/reader_actions.h"           // Gestures::actionFor + ButtonAction
 #include "src/ui/reader_menu.h"              // overlay state + dispatch
 #include "src/ui/screens/library_screen.h"
-#include "src/ui/sleep.h"                    // Sleep::enter on ACTION_LOCK
 #include "src/ui/text.h"
 #include "src/ui/toast.h"                    // Toast::show for bookmark-saved feedback
 
 // Carry out one of the bindable reader actions. No-op for ACTION_NONE.
 // Lives at the screen layer because the actions are reader-context things
-// (bookmark, lock, menu) — not generic input-layer concepts.
+// (bookmark, menu) — not generic input-layer concepts.
 static void performReaderAction(ButtonAction action) {
   switch (action) {
     case ACTION_BOOKMARK: {
@@ -23,14 +21,6 @@ static void performReaderAction(ButtonAction action) {
       renderCurrentPage();
       break;
     }
-    case ACTION_LOCK:
-      // Persist lock state, then sleep immediately. On wake, the main loop
-      // sees Lock::isLocked() and swallows input until an unlock gesture.
-      // ReaderScreen::onSleep persists progress + arms resume, so the next
-      // boot lands back on this page.
-      Lock::engage();
-      Sleep::enter();   // does not return
-      break;
     case ACTION_MENU:
       ReaderMenu::open();
       break;

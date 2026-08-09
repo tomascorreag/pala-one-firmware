@@ -427,6 +427,27 @@ static String slotGridHtml() {
   return out;
 }
 
+// Destination <option> list shared by the editor and the raw-.bin upload card:
+// Single (/sleep.bin), auto (first free slot), then one entry per slot.
+static String destinationOptionsHtml(int nextFreeSlot) {
+  String out;
+  out.reserve(600);
+  out += "<option value='single'>" D_WEB_SS_DST_SINGLE "</option>";
+  if (nextFreeSlot >= 0) {
+    out += "<option value='auto' selected>" D_WEB_SS_DST_AUTO_PREFIX;
+    out += String(nextFreeSlot);
+    out += D_WEB_SS_DST_AUTO_SUFFIX "</option>";
+  } else {
+    out += "<option value='auto' disabled>" D_WEB_SS_DST_FULL "</option>";
+  }
+  for (int i = 0; i < Screensavers::MAX_SLOTS; i++) {
+    out += "<option value='" + String(i) + "'>" D_WEB_SS_DST_SLOT_PREFIX + String(i);
+    if (Screensavers::slotExists(i)) out += D_WEB_SS_DST_OVERWRITE;
+    out += "</option>";
+  }
+  return out;
+}
+
 // Editor card HTML — canvas + sliders + destination dropdown + upload button.
 // Heavy bits (CSS + JS) come from PROGMEM strings above.
 static String editorCardHtml(int nextFreeSlot) {
@@ -461,26 +482,68 @@ static String editorCardHtml(int nextFreeSlot) {
          "</div>"
          "<div class='ss-card'>"
          "<div class='ss-label-row'><label for='ssDestination'>" D_WEB_SS_SAVE_TO "</label></div>"
-         "<select id='ssDestination'>"
-         "<option value='single'>" D_WEB_SS_DST_SINGLE "</option>";
-  if (nextFreeSlot >= 0) {
-    out += "<option value='auto' selected>" D_WEB_SS_DST_AUTO_PREFIX;
-    out += String(nextFreeSlot);
-    out += D_WEB_SS_DST_AUTO_SUFFIX "</option>";
-  } else {
-    out += "<option value='auto' disabled>" D_WEB_SS_DST_FULL "</option>";
-  }
-  for (int i = 0; i < Screensavers::MAX_SLOTS; i++) {
-    out += "<option value='" + String(i) + "'>" D_WEB_SS_DST_SLOT_PREFIX + String(i);
-    if (Screensavers::slotExists(i)) out += D_WEB_SS_DST_OVERWRITE;
-    out += "</option>";
-  }
+         "<select id='ssDestination'>";
+  out += destinationOptionsHtml(nextFreeSlot);
   out += "</select></div>"
          "<div class='actions'>"
          "<button type='button' class='btn' id='ssUploadBtn'>" D_WEB_SS_UPLOAD_EDITED "</button>"
          "<span class='ss-status' id='ssUploadStatus'></span>"
          "</div></div></div>";
   out += FPSTR(kEditorScript);
+  return out;
+}
+
+// Raw-.bin upload card JS: validates the chosen file is exactly 3904 bytes,
+// unpacks it into the preview canvas (bit set = white, matching the panel),
+// and POSTs the file untouched to /screensavers/upload. No conversion — the
+// file is already in device format (e.g. one downloaded from this page).
+static const char kBinUploadScript[] PROGMEM =
+  "<script>(function(){"
+  "if(window.__palaSsBinInit)return;"
+  "window.__palaSsBinInit=1;"
+  "var W=250,H=122,ROW=32,TOTAL=H*ROW;"
+  "var f=document.getElementById('ssBinFile');"
+  "var dst=document.getElementById('ssBinDestination');"
+  "var btn=document.getElementById('ssBinUploadBtn');"
+  "var status=document.getElementById('ssBinStatus');"
+  "var canvas=document.getElementById('ssBinPreview');"
+  "var meta=document.getElementById('ssBinMeta');"
+  "if(!f||!dst||!btn||!status||!canvas)return;"
+  "var ctx=canvas.getContext('2d');"
+  "var bytes=null;"
+  "function render(){ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);if(!bytes){if(meta)meta.textContent='No file loaded';return;}var img=ctx.createImageData(W,H),d=img.data;for(var y=0;y<H;y++)for(var x=0;x<W;x++){var on=(bytes[(y*ROW)+(x>>3)]>>(x&7))&1;var c=on?255:0;var i=(y*W+x)*4;d[i]=c;d[i+1]=c;d[i+2]=c;d[i+3]=255;}ctx.putImageData(img,0,0);if(meta)meta.textContent=W+'x'+H+'  '+TOTAL+' bytes';}"
+  "f.addEventListener('change',function(){var file=f.files&&f.files[0];status.textContent='';if(!file){bytes=null;render();return;}var r=new FileReader();r.onload=function(){var a=new Uint8Array(r.result);if(a.length!==TOTAL){bytes=null;render();status.textContent='File must be exactly '+TOTAL+' bytes (got '+a.length+').';return;}bytes=a;render();};r.onerror=function(){status.textContent='Could not read file.';};r.readAsArrayBuffer(file);});"
+  "btn.addEventListener('click',function(){var file=f.files&&f.files[0];if(!file||!bytes){status.textContent='Choose a '+TOTAL+'-byte .bin first.';return;}var url='/screensavers/upload';var sel=dst?dst.value:'auto';if(sel==='single')url+='?single=1';else if(sel!=='auto')url+='?slot='+encodeURIComponent(sel);var fd=new FormData();fd.append('file',new Blob([bytes],{type:'application/octet-stream'}),'screensaver.bin');status.textContent='Uploading...';btn.disabled=true;fetch(url,{method:'POST',body:fd}).then(function(rsp){if(!rsp.ok)return rsp.text().then(function(t){throw new Error(t||('HTTP '+rsp.status));});status.textContent='Upload complete. Refreshing...';setTimeout(function(){window.location.href='/screensavers';},600);}).catch(function(e){status.textContent='Upload failed: '+(e&&e.message?e.message:'error');}).finally(function(){btn.disabled=false;});});"
+  "render();"
+  "})();</script>";
+
+// Raw-.bin upload card — file picker + preview + destination + upload button.
+// Mirrors the editor card's layout but skips all image processing.
+static String binUploadCardHtml(int nextFreeSlot) {
+  String out;
+  out.reserve(1800);
+  out += "<div class='card'><h2>" D_WEB_SS_BIN_HEADING "</h2>"
+         "<p class='muted'>" D_WEB_SS_BIN_INTRO "</p>"
+         "<div class='ss-wrap'>"
+         "<div class='ss-card ss-grid'>"
+         "<div class='full'><div class='ss-label-row'><label for='ssBinFile'>" D_WEB_SS_BIN_FILE_LABEL "</label></div>"
+         "<input id='ssBinFile' type='file' accept='.bin,application/octet-stream'></div>"
+         "</div>"
+         "<div class='ss-card ss-preview-wrap'>"
+         "<label>" D_WEB_SS_BIN_PREVIEW "</label>"
+         "<div class='ss-preview-stage'><canvas id='ssBinPreview' width='250' height='122'></canvas></div>"
+         "<div class='ss-meta' id='ssBinMeta'>" D_WEB_SS_NO_IMAGE "</div>"
+         "</div>"
+         "<div class='ss-card'>"
+         "<div class='ss-label-row'><label for='ssBinDestination'>" D_WEB_SS_SAVE_TO "</label></div>"
+         "<select id='ssBinDestination'>";
+  out += destinationOptionsHtml(nextFreeSlot);
+  out += "</select></div>"
+         "<div class='actions'>"
+         "<button type='button' class='btn' id='ssBinUploadBtn'>" D_WEB_SS_BIN_UPLOAD "</button>"
+         "<span class='ss-status' id='ssBinStatus'></span>"
+         "</div></div></div>";
+  out += FPSTR(kBinUploadScript);
   return out;
 }
 
@@ -504,6 +567,9 @@ static void handleSleepEditorPage() {
 
   // Editor.
   out += editorCardHtml(nextFree);
+
+  // Raw .bin upload (round-trips with /screensavers/download).
+  out += binUploadCardHtml(nextFree);
 
   // Mode picker.
   out += "<div class='card'><h2>" D_WEB_SS_ROTATION_HEADING "</h2>"
